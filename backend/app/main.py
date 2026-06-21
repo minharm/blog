@@ -9,7 +9,12 @@ from openai import AsyncOpenAI
 import os
 import uuid
 
-app = FastAPI(title="Blog2Shorts AI Production Server", version="5.0")
+# 🎯 [치명적 부팅 결함 원천 해결] 
+# openai_client 모듈 인스턴스화가 집행되기 전에 .env 변수 풀을 메모리에 먼저 안착시킵니다.
+from dotenv import load_dotenv
+load_dotenv()
+
+app = FastAPI(title="Blog2Shorts AI Production Server", version="5.2")
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,8 +28,10 @@ STATIC_DIR = "static"
 os.makedirs(STATIC_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+# 이제 정상적으로 환경 변수 바인딩이 완료된 청정한 시점에 OpenAI 클라이언트를 개설합니다.
 openai_client = AsyncOpenAI()
 
+# --- Pydantic 데이터 수신 규격 스키마 ---
 class URLRequest(BaseModel):
     url: str
 
@@ -113,7 +120,6 @@ async def generate_tts(payload: TTSRequest):
         p_ending = os.path.join(task_dir, "speech_ending.mp3")
         p_master = os.path.join(task_dir, "speech.mp3")
 
-        # 🎯 [동시성 버그 완전 해결] 공용 버퍼와 os.replace() 방식을 폐기하고, 격리 경로 파라미터를 다이렉트로 전사 이식!
         await tts_service.generate_speech(payload.hook, target_voice, p_hook)
         await tts_service.generate_speech(payload.body, target_voice, p_body)
         await tts_service.generate_speech(payload.ending, target_voice, p_ending)
