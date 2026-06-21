@@ -9,7 +9,7 @@ class VideoService:
         self.static_dir = "static"
         self.tasks_base_dir = os.path.join(self.static_dir, "tasks")
         os.makedirs(self.tasks_base_dir, exist_ok=True)
-        # BGM 음원이 담길 정적 폴더 강제 개설
+        # BGM 정적 음원 폴더 강제 개설
         os.makedirs(os.path.join(self.static_dir, "bgm"), exist_ok=True)
 
     def _get_duration(self, file_path) -> float:
@@ -145,8 +145,9 @@ class VideoService:
         st_body = d_hook
         st_ending = d_hook + d_body
 
+        # 🎯 [결함 ① 교정 완비] 파열되어 있던 motion_body f-string의 y=' 누수 완전 차단
         motion_hook = f"y='if(lt(t,0.3), h-100-((t/0.3)*180), h-280)'"
-        motion_body = f"if(lt(t-{st_body},0.3), h-100-(((t-{st_body})/0.3)*180), h-280)'"
+        motion_body = f"y='if(lt(t-{st_body},0.3), h-100-(((t-{st_body})/0.3)*180), h-280)'"
         motion_ending = f"y='if(lt(t-{st_ending},0.3), h-100-(((t-{st_ending})/0.3)*180), h-280)'"
 
         graphic_filter = (
@@ -157,7 +158,6 @@ class VideoService:
             f"drawtext=textfile='{f_ending_txt}':{motion_ending}:x=(w-tw)/2:fontsize={c_size}:fontcolor={c_line1}:box=1:boxcolor={c_boxcolor}:boxborderw=20:enable='between(t,{st_ending},{total_duration})'[v_final]"
         )
 
-        # 🎯 [핵심 버그 완전 격파]: autoBgm 토글 스위치 및 가짜 사인파 소음 박멸 레이어
         use_bgm = safe_settings.get("autoBgm", True)
         bgm_track_id = safe_settings.get("bgmTrack", "track_01")
         bgm_file_path = f"static/bgm/{bgm_track_id}.mp3"
@@ -165,7 +165,6 @@ class VideoService:
         audio_inputs = []
         bgm_mixing_filter = ""
 
-        # 1. 나레이션 음성 소스 배치 결정
         if is_voice_none:
             audio_inputs.extend(["-f", "lavfi", "-i", f"anullsrc=cl=stereo:r=44100:d={total_duration}"])
             voice_filter_stmt = f"[0:a]"
@@ -175,21 +174,17 @@ class VideoService:
             voice_filter_stmt = f"[{idx_v}:a][{idx_v+1}:a][{idx_v+2}:a]concat=n=3:v=0:a=1[a_voice_merged]; [a_voice_merged]"
             idx_bgm_input = idx_v + 3
 
-        # 2. 토글 스위치(use_bgm) 및 실제 MP3 파일 유무에 따른 연산 분기 조립
         if use_bgm:
             if os.path.exists(bgm_file_path):
-                # 실제 BGM 파일이 존재할 때: 무한 루프 인풋으로 장전
                 audio_inputs.extend(["-stream_loop", "-1", "-i", bgm_file_path])
                 bgm_filter_stmt = f"[{idx_bgm_input}:a]volume=0.15,asetpts=0[bgm_fixed];"
             else:
-                # 🎯 파일이 아직 없을 때: 귀를 찌르는 삐- 소리(sine) 대신 부드러운 가상 무음 처리로 전면 교체
                 audio_inputs.extend(["-f", "lavfi", "-i", f"anullsrc=cl=stereo:r=44100:d={total_duration}"])
                 bgm_filter_stmt = f"[{idx_bgm_input}:a]volume=0.0,asetpts=0[bgm_fixed];"
             
-            # 최종 믹싱 트랙 결합 (amix=inputs=2)
-            bgm_mixing_filter = f"{voice_filter_stmt}identity[a_src]; {bgm_filter_stmt} [a_src][bgm_fixed]amix=inputs=2:duration=first[a_final];"
+            # 🎯 [결함 ② 교정 완비] 유령 identity 필터를 지우고, 표준 오디오 무위 통과 필터인 'anull'로 긴급 리플레이스 완료
+            bgm_mixing_filter = f"{voice_filter_stmt}anull[a_src]; {bgm_filter_stmt} [a_src][bgm_fixed]amix=inputs=2:duration=first[a_final];"
         else:
-            # 🎯 사용자가 BGM 토글을 껐을 경우: 어떠한 BGM 레이어도 섞지 않고 오직 순정 목소리만 다이렉트 출격
             bgm_mixing_filter = f"{voice_filter_stmt}amix=inputs=1[a_final];"
 
         cmd = [

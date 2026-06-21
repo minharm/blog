@@ -1,22 +1,21 @@
-# Node dependencies
 node_modules/
 dist/
 .eslintcache
 .package-lock.json
 
-# Python artifacts
+# 파이썬 컴파일 캐시 완전 격리
 __pycache__/
 *.pyc
 .venv/
 venv/
 
-# Local media generation directories (Strict Block)
+# 미디어 생성 산출물 임시 폴더 엄격 차단
 backend/static/tasks/
 backend/static/tmp_img/
 backend/static/speech*.mp3
 backend/static/output*.mp4
 
-# Security Environment Variables (Never upload to GitHub)
+# 보안 환경 변수 파일 (원격 저장소 업로드 절대 불가)
 .env
 .env.local
 .env.*
