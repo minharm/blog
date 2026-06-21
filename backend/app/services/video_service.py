@@ -7,12 +7,11 @@ import uuid
 class VideoService:
     def __init__(self):
         self.static_dir = "static"
-        # 테스크 저장용 폴더 생성
         self.tasks_base_dir = os.path.join(self.static_dir, "tasks")
         os.makedirs(self.tasks_base_dir, exist_ok=True)
 
     def _get_duration(self, file_path) -> float:
-        """FFprobe 기반 밀리초 단위 정밀 오디오 분석 엔진"""
+        """FFprobe 기반 밀리초 단위 정밀 오디오 분석 엔진 (예외 방어 완비)"""
         if not os.path.exists(file_path): return 0.0
         try:
             cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", file_path]
@@ -44,16 +43,23 @@ class VideoService:
         task_dir = os.path.join(self.tasks_base_dir, session_id)
         os.makedirs(task_dir, exist_ok=True)
 
-        # 최종 결과물 mp4 파일명 유니크 지정
         final_output_path = os.path.join(self.static_dir, f"output_{session_id}.mp4")
         
         p_hook = "static/speech_hook.mp3"
         p_body = "static/speech_body.mp3"
         p_ending = "static/speech_ending.mp3"
 
-        d_hook = self._get_duration(p_hook) or 4.0
-        d_body = self._get_duration(p_body) or 8.0
-        d_ending = self._get_duration(p_ending) or 4.0
+        # 🎯 [리뷰 결함 1 해결] 자막 전용 모드 브레이크 다운 방어 레이어
+        # 성우가 없거나 파일이 소멸된 상태라면 가상의 정적 타임라인(총 15초)을 강제 가드 분배합니다.
+        is_voice_none = not (os.path.exists(p_hook) and os.path.exists(p_body) and os.path.exists(p_ending))
+        
+        if is_voice_none:
+            d_hook, d_body, d_ending = 4.0, 7.0, 4.0
+        else:
+            d_hook = self._get_duration(p_hook) or 4.0
+            d_body = self._get_duration(p_body) or 7.0
+            d_ending = self._get_duration(p_ending) or 4.0
+            
         total_duration = d_hook + d_body + d_ending
 
         # 이미지 소스 실시간 수집 및 로컬라이징
@@ -112,8 +118,7 @@ class VideoService:
 
         v_concat += f"concat=n={idx_v}:v=1:a=0[v_base]"
 
-        # 🎯 해결책 2: 드라이브 문자(D:) 충돌을 완벽하게 해결하기 위해 상대 경로(Relative Path) 기법 도입
-        # 파일 경로에 콜론(:)을 완전히 배제하여 FFmpeg 구문 분석기 크래시를 차단합니다.
+        # 자막 텍스트 임시 가두기 파일링
         f_hook_txt = f"static/tasks/{session_id}/hook.txt"
         f_body_txt = f"static/tasks/{session_id}/body.txt"
         f_ending_txt = f"static/tasks/{session_id}/ending.txt"
@@ -122,16 +127,29 @@ class VideoService:
         with open(os.path.join(task_dir, "body.txt"), "w", encoding="utf-8") as f: f.write(self._wrap_text(safe_settings.get("body_text", "")))
         with open(os.path.join(task_dir, "ending.txt"), "w", encoding="utf-8") as f: f.write(self._wrap_text(safe_settings.get("ending_text", "")))
 
-        # 디자인 템플릿 환경 변수 수신
+        # 🎯 [리뷰 결함 4 해결] 추천 디자인 프리셋 선택 메커니즘 활성화 및 맵핑
         c_size = safe_settings.get("fontSize", 42)
-        c_line1 = safe_settings.get("colorLine1", "#FFFFFF").replace("#", "0x")
-        c_line2 = safe_settings.get("colorLine2", "#FFD400").replace("#", "0x")
+        c_line1 = "0xFFFFFF"
+        c_line2 = "0x00D4FF"  # 기본 골드 옐로우
+        c_boxcolor = "0x000000@0.6"
+        
+        if template == "dark":
+            c_line1 = "0xCCCCCC"
+            c_line2 = "0x4A4AF7"  # 네온 레드 핑크 변환
+            c_boxcolor = "0x111111@0.8"
+        elif template == "mint":
+            c_line1 = "0xFFFFFF"
+            c_line2 = "0x6EF5A3"  # 민트 그린
+            c_boxcolor = "0x052e16@0.9"
+        elif template == "custom":
+            c_line1 = safe_settings.get("colorLine1", "#FFFFFF").replace("#", "0x")
+            c_line2 = safe_settings.get("colorLine2", "#FFD400").replace("#", "0x")
+
         c_channel = safe_settings.get("channelName", "SuperShorts")
 
         st_body = d_hook
         st_ending = d_hook + d_body
 
-        # 고도화된 슬라이딩 모션 그래픽 타임 앵커 배치
         motion_hook = f"y='if(lt(t,0.3), h-100-((t/0.3)*180), h-280)'"
         motion_body = f"y='if(lt(t-{st_body},0.3), h-100-(((t-{st_body})/0.3)*180), h-280)'"
         motion_ending = f"y='if(lt(t-{st_ending},0.3), h-100-(((t-{st_ending})/0.3)*180), h-280)'"
@@ -139,19 +157,34 @@ class VideoService:
         graphic_filter = (
             f"{v_filters}{v_concat};"
             f"[v_base]drawtext=text='@{c_channel}':x=(w-tw)/2:y=80:fontsize=26:fontcolor=white@0.4,"
-            f"drawtext=textfile='{f_hook_txt}':{motion_hook}:x=(w-tw)/2:fontsize={c_size}:fontcolor={c_line1}:box=1:boxcolor=black@0.6:boxborderw=20:enable='between(t,0,{st_body})',"
-            f"drawtext=textfile='{f_body_txt}':{motion_body}:x=(w-tw)/2:fontsize={c_size}:fontcolor={c_line2}:box=1:boxcolor=black@0.6:boxborderw=20:enable='between(t,{st_body},{st_ending})',"
-            f"drawtext=textfile='{f_ending_txt}':{motion_ending}:x=(w-tw)/2:fontsize={c_size}:fontcolor={c_line1}:box=1:boxcolor=black@0.6:boxborderw=20:enable='between(t,{st_ending},{total_duration})'[v_final]"
+            f"drawtext=textfile='{f_hook_txt}':{motion_hook}:x=(w-tw)/2:fontsize={c_size}:fontcolor={c_line1}:box=1:boxcolor={c_boxcolor}:boxborderw=20:enable='between(t,0,{st_body})',"
+            f"drawtext=textfile='{f_body_txt}':{motion_body}:x=(w-tw)/2:fontsize={c_size}:fontcolor={c_line2}:box=1:boxcolor={c_boxcolor}:boxborderw=20:enable='between(t,{st_body},{st_ending})',"
+            f"drawtext=textfile='{f_ending_txt}':{motion_ending}:x=(w-tw)/2:fontsize={c_size}:fontcolor={c_line1}:box=1:boxcolor={c_boxcolor}:boxborderw=20:enable='between(t,{st_ending},{total_duration})'[v_final]"
         )
 
-        # 🎯 해결책 3: 오디오 결합 인덱스 매칭을 고정 이미지 수(img_count)가 아닌, 실제 장전된 인풋 총 수(idx_v) 기준으로 일치 교정
+        # 🎯 [리뷰 결함 5 해결] 사운드 제어: 가상 침묵 트랙 혹은 오디오 인풋 매칭 연산
+        audio_inputs = []
+        filter_audio_complex = ""
+        
+        if is_voice_none:
+            # 음성 파일이 없을 경우 가상 가드 침묵 오디오 스트림 결합 선언
+            audio_inputs.extend(["-f", "lavfi", "-i", f"anullsrc=cl=stereo:r=44100:d={total_duration}"])
+            filter_audio_complex = f"[0:a]amix=inputs=1[a_final];"
+            audio_index_offset = 0
+        else:
+            audio_inputs.extend(["-i", p_hook, "-i", p_body, "-i", p_ending])
+            filter_audio_complex = f"[{idx_v}:a][{idx_v+1}:a][{idx_v+2}:a]concat=n=3:v=0:a=1[a_voice_merged]; [a_voice_merged]amix=inputs=1[a_final];"
+            audio_index_offset = 3
+
         cmd = [
             "ffmpeg", "-y",
             *mapped_inputs,
-            "-i", p_hook, "-i", p_body, "-i", p_ending,
-            "-filter_complex", f"[{idx_v}:a][{idx_v+1}:a][{idx_v+2}:a]concat=n=3:v=0:a=1[a_merged]; {graphic_filter}",
-            "-map", "[v_final]", "-map", "[a_merged]",
+            *audio_inputs,
+            "-filter_complex", f"{filter_audio_complex} {graphic_filter}",
+            "-map", "[v_final]", 
+            "-map", "[a_final]",
             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
+            "-t", f"{total_duration:.2f}",
             final_output_path
         ]
 
@@ -160,7 +193,7 @@ class VideoService:
 
         if process.returncode != 0:
             error_log = stderr.decode('utf-8', errors='ignore')
-            print(f"[FFmpeg 치명적 렌더링 에러]: {error_log}")
-            raise Exception("FFmpeg 미디어 타임라인 빌드 중 결함이 발생했습니다.")
+            print(f"[FFmpeg 치명적 에러 로그]: {error_log}")
+            raise Exception("FFmpeg 컴파일 파이프라인 연출 공정 도중 에러가 터졌습니다.")
 
         return f"/static/output_{session_id}.mp4"

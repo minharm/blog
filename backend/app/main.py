@@ -9,7 +9,7 @@ from openai import AsyncOpenAI
 import os
 import subprocess
 
-app = FastAPI(title="Blog2Shorts AI API Server", version="2.0")
+app = FastAPI(title="Blog2Shorts AI API Server", version="3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,7 +27,6 @@ openai_client = AsyncOpenAI()
 class URLRequest(BaseModel):
     url: str
 
-# 🎯 [자막 싱크 동기화] 파트별 스크립트를 분리 수신하도록 TTS 스키마 개조
 class TTSRequest(BaseModel):
     hook: str
     body: str
@@ -89,22 +88,31 @@ async def analyze_blog(payload: URLRequest):
 @app.post("/api/tts")
 async def generate_tts(payload: TTSRequest):
     try:
+        # 임시 수집 디렉토리 생성 및 찌꺼기 파일 선행 청소
+        os.makedirs("static", exist_ok=True)
+        for f_name in ["speech_hook.mp3", "speech_body.mp3", "speech_ending.mp3", "speech.mp3"]:
+            p = os.path.join("static", f_name)
+            if os.path.exists(p): os.remove(p)
+
+        # 🎯 [리뷰 결함 1-B 해결]: 사용자가 '자막 전용 모드'를 고르면 API 호출을 패스
         if payload.voice == "none":
             return {"status": "success", "audio_url": "none"}
             
+        # 🎯 [리뷰 결함 2 해결]: 허가되지 않은 한국어 성우 이름 인젝션 방어 벨브
+        allowed_voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
+        target_voice = payload.voice if payload.voice in allowed_voices else "alloy"
+
         tts_service = TTSService()
         
-        # 🎯 파트별 순정 음성 자원 개별 인코딩 및 강제 원격 분리 저장
-        await tts_service.generate_speech(payload.hook, payload.voice)
+        await tts_service.generate_speech(payload.hook, target_voice)
         os.replace("static/speech.mp3", "static/speech_hook.mp3")
         
-        await tts_service.generate_speech(payload.body, payload.voice)
+        await tts_service.generate_speech(payload.body, target_voice)
         os.replace("static/speech.mp3", "static/speech_body.mp3")
         
-        await tts_service.generate_speech(payload.ending, payload.voice)
+        await tts_service.generate_speech(payload.ending, target_voice)
         os.replace("static/speech.mp3", "static/speech_ending.mp3")
         
-        # 프론트엔드 미리보기 및 재생 스트림 호환을 위해 3개 오디오를 하나로 마스터 컴파일 결합
         concat_cmd = [
             "ffmpeg", "-y",
             "-i", "static/speech_hook.mp3",
