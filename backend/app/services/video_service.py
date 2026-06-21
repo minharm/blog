@@ -145,7 +145,6 @@ class VideoService:
         st_body = d_hook
         st_ending = d_hook + d_body
 
-        # 🎯 [결함 ① 교정 완비] 파열되어 있던 motion_body f-string의 y=' 누수 완전 차단
         motion_hook = f"y='if(lt(t,0.3), h-100-((t/0.3)*180), h-280)'"
         motion_body = f"y='if(lt(t-{st_body},0.3), h-100-(((t-{st_body})/0.3)*180), h-280)'"
         motion_ending = f"y='if(lt(t-{st_ending},0.3), h-100-(((t-{st_ending})/0.3)*180), h-280)'"
@@ -165,10 +164,11 @@ class VideoService:
         audio_inputs = []
         bgm_mixing_filter = ""
 
+        # 🎯 [구조적 인덱스 버그 타파]: 자막 전용 모드(is_voice_none)일 때 고정값 0, 1 대신 이미지 주입 스트림 개수(idx_v) 연동
         if is_voice_none:
             audio_inputs.extend(["-f", "lavfi", "-i", f"anullsrc=cl=stereo:r=44100:d={total_duration}"])
-            voice_filter_stmt = f"[0:a]"
-            idx_bgm_input = 1
+            voice_filter_stmt = f"[{idx_v}:a]"
+            idx_bgm_input = idx_v + 1
         else:
             audio_inputs.extend(["-i", p_hook, "-i", p_body, "-i", p_ending])
             voice_filter_stmt = f"[{idx_v}:a][{idx_v+1}:a][{idx_v+2}:a]concat=n=3:v=0:a=1[a_voice_merged]; [a_voice_merged]"
@@ -182,7 +182,6 @@ class VideoService:
                 audio_inputs.extend(["-f", "lavfi", "-i", f"anullsrc=cl=stereo:r=44100:d={total_duration}"])
                 bgm_filter_stmt = f"[{idx_bgm_input}:a]volume=0.0,asetpts=0[bgm_fixed];"
             
-            # 🎯 [결함 ② 교정 완비] 유령 identity 필터를 지우고, 표준 오디오 무위 통과 필터인 'anull'로 긴급 리플레이스 완료
             bgm_mixing_filter = f"{voice_filter_stmt}anull[a_src]; {bgm_filter_stmt} [a_src][bgm_fixed]amix=inputs=2:duration=first[a_final];"
         else:
             bgm_mixing_filter = f"{voice_filter_stmt}amix=inputs=1[a_final];"
