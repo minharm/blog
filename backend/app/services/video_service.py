@@ -2,10 +2,13 @@ import os
 import subprocess
 import httpx
 import json
+import uuid
 
 class VideoService:
     def __init__(self):
         self.static_dir = "static"
+        self.tasks_base_dir = os.path.join(self.static_dir, "tasks")
+        os.makedirs(self.tasks_base_dir, exist_ok=True)
         os.makedirs(os.path.join(self.static_dir, "bgm"), exist_ok=True)
 
     def _get_duration(self, file_path) -> float:
@@ -31,7 +34,7 @@ class VideoService:
 
     async def generate_shorts_video(self, task_id: str, images: list[str], template: str = "basic", settings: dict = None) -> str:
         safe_settings = settings or {}
-        task_dir = os.path.join(self.static_dir, "tasks", task_id)
+        task_dir = os.path.join(self.tasks_base_dir, task_id)
         os.makedirs(task_dir, exist_ok=True)
 
         final_output_path = os.path.join(task_dir, "output.mp4")
@@ -148,7 +151,6 @@ class VideoService:
         audio_inputs = []
         bgm_mixing_filter = ""
 
-        # 🎯 [리뷰 결함 1 해결] 자막 전용 모드 시 이미지 스트림 총 개수(idx_v) 오프셋 주입으로 매핑 연전성 확보
         if is_voice_none:
             audio_inputs.extend(["-f", "lavfi", "-i", f"anullsrc=cl=stereo:r=44100:d={total_duration}"])
             voice_filter_stmt = f"[{idx_v}:a]"
@@ -163,7 +165,6 @@ class VideoService:
                 audio_inputs.extend(["-stream_loop", "-1", "-i", bgm_file_path])
                 bgm_filter_stmt = f"[{idx_bgm_input}:a]volume=0.15,asetpts=0[bgm_fixed];"
             else:
-                # 🎯 [리뷰 결함 5-B 해결] "삐-" 소리가 나는 가짜 사인파를 완전히 걷어내고 부드러운 무음 처리 가드 장착
                 audio_inputs.extend(["-f", "lavfi", "-i", f"anullsrc=cl=stereo:r=44100:d={total_duration}"])
                 bgm_filter_stmt = f"[{idx_bgm_input}:a]volume=0.0,asetpts=0[bgm_fixed];"
             
@@ -182,10 +183,13 @@ class VideoService:
             final_output_path
         ]
 
+        # 🎯 [리뷰 결함 해결] 사라진 stderr 디버깅 추적 스트림 라인을 완벽 복구하여 렌더 아웃풋 크래시 역추적 보장
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        process.communicate()
+        stdout, stderr = process.communicate()
 
         if process.returncode != 0:
-            raise Exception("FFmpeg 렌더링에 실패했습니다.")
+            error_log = stderr.decode('utf-8', errors='ignore')
+            print(f"❌ [FFmpeg 치명적 렌더링 에러 상세 로그]\n{error_log}")
+            raise Exception(f"FFmpeg 미디어 타임라인 빌드 실패: {error_log[:200]}")
 
         return f"/static/tasks/{task_id}/output.mp4"

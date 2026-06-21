@@ -9,9 +9,8 @@ from openai import AsyncOpenAI
 import os
 import uuid
 
-app = FastAPI(title="Blog2Shorts AI Production Server", version="4.0")
+app = FastAPI(title="Blog2Shorts AI Production Server", version="5.0")
 
-# 🎯 [CORS 결함 해결] allow_credentials=True 일 때 ["*"]는 불가능하므로 허용할 프론트엔드 출처 명시
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -26,19 +25,18 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 openai_client = AsyncOpenAI()
 
-# --- Pydantic 데이터 수신 규격 스키마 ---
 class URLRequest(BaseModel):
     url: str
 
 class TTSRequest(BaseModel):
-    task_id: str  # 세션 격리를 위한 고유 키 수신
+    task_id: str  
     hook: str
     body: str
     ending: str
     voice: str = "alloy"
 
 class VideoRequest(BaseModel):
-    task_id: str  # 세션 격리를 위한 고유 키 수신
+    task_id: str  
     images: list[str]
     template: str = "basic"
     settings: dict = None
@@ -50,7 +48,6 @@ async def analyze_blog(payload: URLRequest):
         crawler = NaverCrawler()
         raw_text, title, images = await crawler.extract_text(payload.url)
         
-        # 🎯 [아키텍처 대개혁] 프로젝트 시작 시 고유 Task ID를 발급하여 전체 파이프라인의 동시성 격리 보장
         task_id = str(uuid.uuid4())
         os.makedirs(os.path.join(STATIC_DIR, "tasks", task_id), exist_ok=True)
 
@@ -100,33 +97,26 @@ async def analyze_blog(payload: URLRequest):
 @app.post("/api/tts")
 async def generate_tts(payload: TTSRequest):
     try:
-        # 🎯 [리뷰 결함 3 완전 해결] TTS 생성 단계부터 고유 작업 폴더를 참조하도록 격리 분화
         task_dir = os.path.join(STATIC_DIR, "tasks", payload.task_id)
         os.makedirs(task_dir, exist_ok=True)
 
         if payload.voice == "none":
             return {"status": "success", "audio_url": "none"}
             
-        # 🎯 [리뷰 결함 2 완전 해결] 무의미한 가짜 이름 매핑을 걷어내고 순정 화이트리스트 검증만 가동
         allowed_voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
         target_voice = payload.voice if payload.voice in allowed_voices else "alloy"
 
         tts_service = TTSService()
         
-        # 격리된 폴더 내부에 파트별 mp3 조각 안전하게 빌드
         p_hook = os.path.join(task_dir, "speech_hook.mp3")
         p_body = os.path.join(task_dir, "speech_body.mp3")
         p_ending = os.path.join(task_dir, "speech_ending.mp3")
         p_master = os.path.join(task_dir, "speech.mp3")
 
-        await tts_service.generate_speech(payload.hook, target_voice)
-        os.replace("static/speech.mp3", p_hook)
-        
-        await tts_service.generate_speech(payload.body, target_voice)
-        os.replace("static/speech.mp3", p_body)
-        
-        await tts_service.generate_speech(payload.ending, target_voice)
-        os.replace("static/speech.mp3", p_ending)
+        # 🎯 [동시성 버그 완전 해결] 공용 버퍼와 os.replace() 방식을 폐기하고, 격리 경로 파라미터를 다이렉트로 전사 이식!
+        await tts_service.generate_speech(payload.hook, target_voice, p_hook)
+        await tts_service.generate_speech(payload.body, target_voice, p_body)
+        await tts_service.generate_speech(payload.ending, target_voice, p_ending)
         
         import subprocess
         concat_cmd = [

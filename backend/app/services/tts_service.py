@@ -1,33 +1,30 @@
 import os
 from openai import AsyncOpenAI
-from dotenv import load_dotenv
-
-load_dotenv()
 
 class TTSService:
     def __init__(self):
-        # 환경 변수에서 OpenAI API Key 로드
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("OpenAI API Key가 .env 파일에 설정되지 않았습니다.")
-        self.client = AsyncOpenAI(api_key=api_key)
+        # OpenAI 비동기 클라이언트 바인딩
+        self.client = AsyncOpenAI()
 
-    async def generate_speech(self, text: str, voice: str = "alloy") -> str:
+    async def generate_speech(self, text: str, voice: str, output_path: str) -> str:
         """
-        텍스트 대본을 받아 static 폴더 내에 speech.mp3 파일을 생성하고 주소를 반환합니다.
+        [상용 레이스 컨디션 방어 사양]
+        임시 static/speech.mp3 공용 버퍼를 거치지 않고, 
+        요청 세션별 격리 경로(output_path)로 고품질 TTS 오디오 트랙을 다이렉트 스트리밍 저장합니다.
         """
-        os.makedirs("static", exist_ok=True)
-        output_path = os.path.join("static", "speech.mp3")
+        # 저장될 격리 테스크 폴더 선행 검증 및 강제 생성
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-        # OpenAI 오디오 생성 API 호출
+        # OpenAI 최신 표준 스펙 오디오 엔진 호출
         response = await self.client.audio.speech.create(
             model="tts-1",
-            voice=voice,  # alloy, echo, fable, onyx, nova, shimmer 중 택 1
+            voice=voice,
             input=text
         )
 
-        # 바이너리 파일 비동기 스트리밍 저장
+        # 비비동기 주파수 바이너리 버퍼 로드 후 동시성 가드 다이렉트 파일링
+        audio_content = await response.read()
         with open(output_path, "wb") as f:
-            f.write(response.content)
+            f.write(audio_content)
 
-        return "/static/speech.mp3"
+        return output_path

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 // 🎯 [리뷰 결함 해결] 백엔드 주소가 사방에 박혀있던 하드코딩을 단 한 곳으로 통합 환경변수화
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
 export const useProjectStore = create((set, get) => ({
   currentStep: 0,
