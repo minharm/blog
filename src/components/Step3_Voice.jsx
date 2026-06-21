@@ -3,15 +3,15 @@ import { useProjectStore } from '../store/useProjectStore';
 export default function Step3_Voice() {
   const { projectData, setSelectedVoice, playVoiceSample, handleVoiceGeneration, setCurrentStep } = useProjectStore();
 
+  // 🎯 [리뷰 결함 해결] 겹침 현상을 원천 차단하고 OpenAI 표준 음색 사양에 맞춰 6대 풀로 엄격 정리
   const voicePool = [
-    { id: 'none', name: '🔇 자막 전용 모드', desc: '목소리 송출 없이 트렌디한 자막 효과로만 가동' },
-    { id: 'alloy', name: '나라 (20대 여성)', desc: '맑고 똑 부러지는 정보 유튜버 쇼츠 전용' },
-    { id: 'echo', name: '재민 (ASMR 남성)', desc: '중후하고 신뢰감 높은 목소리 기획 톤' },
-    { id: 'onyx', name: '민상 (스포츠 MC)', desc: '바이럴, 챌린지 전용 하이 텐션 웅변 성우' },
-    { id: 'nova', name: '봄달 (브이로그 여)', desc: '감성적이고 자연스러운 일상 공유 톤' },
-    { id: 'shimmer', name: '민우 (게임 캐스터)', desc: '활기차고 오락성 강한 엔터테인먼트 사운드' },
-    { id: 'fable', name: '보이스 아나운서', desc: '뉴스룸 사양의 정갈하고 차분한 브로드캐스팅' },
-    { id: '유진', name: '쇼핑 호스트', desc: '제품 리뷰 및 쿠팡 파트너스 셀링 특화 마케터' }
+    { id: 'none', name: '🔇 자막 전용 모드', desc: '목소리 송출 없이 효과음과 텍스트 연출로만 가동' },
+    { id: 'alloy', name: '나라 (Alloy)', desc: '맑고 똑 부러지는 여성 정보 전달 톤' },
+    { id: 'nova', name: '봄달 (Nova)', desc: '감성적이고 자연스러운 일상 브이로그 여성 톤' },
+    { id: 'shimmer', name: '유진 (Shimmer)', desc: '화사하고 텐션 높은 쇼핑 호스트 및 캐스터 여성 톤' },
+    { id: 'echo', name: '재민 (Echo)', desc: '중후하고 신뢰감 높은 아나운서 사양 남성 톤' },
+    { id: 'onyx', name: '민상 (Onyx)', desc: '박진감 넘치고 에너제틱한 마케팅 스포츠 MC 남성 톤' },
+    { id: 'fable', name: '동수 (Fable)', desc: '차분하고 정갈하게 팁을 읽어주는 리뷰형 남성 톤' }
   ];
 
   return (

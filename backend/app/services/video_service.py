@@ -2,29 +2,21 @@ import os
 import subprocess
 import httpx
 import json
-import uuid
 
 class VideoService:
     def __init__(self):
         self.static_dir = "static"
-        self.tasks_base_dir = os.path.join(self.static_dir, "tasks")
-        os.makedirs(self.tasks_base_dir, exist_ok=True)
-        # BGM 정적 음원 폴더 강제 개설
         os.makedirs(os.path.join(self.static_dir, "bgm"), exist_ok=True)
 
     def _get_duration(self, file_path) -> float:
-        """FFprobe 기반 밀리초 단위 정밀 오디오 분석 엔진"""
         if not os.path.exists(file_path): return 0.0
         try:
             cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", file_path]
             res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
             return float(json.loads(res.stdout)["format"]["duration"])
-        except Exception as e:
-            print(f"[FFprobe 경고] 오디오 길이 계측 실패, 기본값 대체: {e}")
-            return 4.0
+        except: return 4.0
 
     def _wrap_text(self, text, max_chars=16) -> str:
-        """가로 해상도를 벗어나지 않도록 글자를 자동 줄바꿈 처리"""
         if not text: return ""
         words = text.split()
         lines, current = [], ""
@@ -37,34 +29,23 @@ class VideoService:
         if current: lines.append(current)
         return "\n".join(lines)
 
-    async def generate_shorts_video(self, images: list[str], template: str = "basic", settings: dict = None) -> str:
+    async def generate_shorts_video(self, task_id: str, images: list[str], template: str = "basic", settings: dict = None) -> str:
         safe_settings = settings or {}
-
-        session_id = str(uuid.uuid4())
-        task_dir = os.path.join(self.tasks_base_dir, session_id)
+        task_dir = os.path.join(self.static_dir, "tasks", task_id)
         os.makedirs(task_dir, exist_ok=True)
 
-        final_output_path = os.path.join(self.static_dir, f"output_{session_id}.mp4")
+        final_output_path = os.path.join(task_dir, "output.mp4")
         
-        p_hook = "static/speech_hook.mp3"
-        p_body = "static/speech_body.mp3"
-        p_ending = "static/speech_ending.mp3"
+        p_hook = os.path.join(task_dir, "speech_hook.mp3")
+        p_body = os.path.join(task_dir, "speech_body.mp3")
+        p_ending = os.path.join(task_dir, "speech_ending.mp3")
 
-       # 🎯 [자막 전용 모드 글자 컷팅 결함 완벽 해결]: 지능형 텍스트 길이 기반 타임라인 자동 계측기
         is_voice_none = not (os.path.exists(p_hook) and os.path.exists(p_body) and os.path.exists(p_ending))
         
         if is_voice_none:
-            # 프론트엔드가 보내준 실제 텍스트 스트링 문자열 길이 확보
-            txt_hook_raw = safe_settings.get("hook_text", "")
-            txt_body_raw = safe_settings.get("body_text", "")
-            txt_ending_raw = safe_settings.get("ending_text", "")
-            
-            # 한국어 가독 효율 공식 주입: (글자 수 * 0.18초)와 최소 유지 시간(4~6초) 중 최댓값을 동적 선택!
-            # 글자가 길어지면 FFmpeg의 렌더링 프레임 타임라인이 알아서 리드미컬하게 확장됩니다.
-            d_hook = max(4.0, len(txt_hook_raw) * 0.18)
-            d_body = max(6.5, len(txt_body_raw) * 0.18)
-            d_ending = max(4.0, len(txt_ending_raw) * 0.18)
-            print(f"📊 [자막 전용 모드 가동] 글자 수 비례 동적 계측 시간 계산 완료 -> Hook: {d_hook:.1f}초, Body: {d_body:.1f}초, Ending: {d_ending:.1f}초")
+            d_hook = max(4.0, len(safe_settings.get("hook_text", "")) * 0.18)
+            d_body = max(6.5, len(safe_settings.get("body_text", "")) * 0.18)
+            d_ending = max(4.0, len(safe_settings.get("ending_text", "")) * 0.18)
         else:
             d_hook = self._get_duration(p_hook) or 4.0
             d_body = self._get_duration(p_body) or 7.0
@@ -86,7 +67,7 @@ class VideoService:
 
         if not local_images:
             fb = os.path.join(task_dir, "fb.jpg")
-            subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=0x020617:s=720x1280", "-vframes", "1", fb], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=0x020617:s=720x1280", "-vframes", "1", fb], stdout=subprocess.PIPE)
             local_images.append(fb)
 
         img_count = len(local_images)
@@ -126,35 +107,27 @@ class VideoService:
 
         v_concat += f"concat=n={idx_v}:v=1:a=0[v_base]"
 
-        f_hook_txt = f"static/tasks/{session_id}/hook.txt"
-        f_body_txt = f"static/tasks/{session_id}/body.txt"
-        f_ending_txt = f"static/tasks/{session_id}/ending.txt"
+        f_hook_txt = f"static/tasks/{task_id}/hook.txt"
+        f_body_txt = f"static/tasks/{task_id}/body.txt"
+        f_ending_txt = f"static/tasks/{task_id}/ending.txt"
 
         with open(os.path.join(task_dir, "hook.txt"), "w", encoding="utf-8") as f: f.write(self._wrap_text(safe_settings.get("hook_text", "")))
         with open(os.path.join(task_dir, "body.txt"), "w", encoding="utf-8") as f: f.write(self._wrap_text(safe_settings.get("body_text", "")))
         with open(os.path.join(task_dir, "ending.txt"), "w", encoding="utf-8") as f: f.write(self._wrap_text(safe_settings.get("ending_text", "")))
 
         c_size = safe_settings.get("fontSize", 42)
-        c_line1 = "0xFFFFFF"
-        c_line2 = "0x00D4FF"  
-        c_boxcolor = "0x000000@0.6"
+        c_line1, c_line2, c_boxcolor = "0xFFFFFF", "0x00D4FF", "0x000000@0.6"
         
         if template == "dark":
-            c_line1 = "0xCCCCCC"
-            c_line2 = "0x4A4AF7"  
-            c_boxcolor = "0x111111@0.8"
+            c_line1, c_line2, c_boxcolor = "0xCCCCCC", "0x4A4AF7", "0x111111@0.8"
         elif template == "mint":
-            c_line1 = "0xFFFFFF"
-            c_line2 = "0x6EF5A3"  
-            c_boxcolor = "0x052e16@0.9"
+            c_line1, c_line2, c_boxcolor = "0xFFFFFF", "0x6EF5A3", "0x052e16@0.9"
         elif template == "custom":
             c_line1 = safe_settings.get("colorLine1", "#FFFFFF").replace("#", "0x")
             c_line2 = safe_settings.get("colorLine2", "#FFD400").replace("#", "0x")
 
         c_channel = safe_settings.get("channelName", "SuperShorts")
-
-        st_body = d_hook
-        st_ending = d_hook + d_body
+        st_body, st_ending = d_hook, d_hook + d_body
 
         motion_hook = f"y='if(lt(t,0.3), h-100-((t/0.3)*180), h-280)'"
         motion_body = f"y='if(lt(t-{st_body},0.3), h-100-(((t-{st_body})/0.3)*180), h-280)'"
@@ -175,7 +148,7 @@ class VideoService:
         audio_inputs = []
         bgm_mixing_filter = ""
 
-        # 🎯 [구조적 인덱스 버그 타파]: 자막 전용 모드(is_voice_none)일 때 고정값 0, 1 대신 이미지 주입 스트림 개수(idx_v) 연동
+        # 🎯 [리뷰 결함 1 해결] 자막 전용 모드 시 이미지 스트림 총 개수(idx_v) 오프셋 주입으로 매핑 연전성 확보
         if is_voice_none:
             audio_inputs.extend(["-f", "lavfi", "-i", f"anullsrc=cl=stereo:r=44100:d={total_duration}"])
             voice_filter_stmt = f"[{idx_v}:a]"
@@ -190,6 +163,7 @@ class VideoService:
                 audio_inputs.extend(["-stream_loop", "-1", "-i", bgm_file_path])
                 bgm_filter_stmt = f"[{idx_bgm_input}:a]volume=0.15,asetpts=0[bgm_fixed];"
             else:
+                # 🎯 [리뷰 결함 5-B 해결] "삐-" 소리가 나는 가짜 사인파를 완전히 걷어내고 부드러운 무음 처리 가드 장착
                 audio_inputs.extend(["-f", "lavfi", "-i", f"anullsrc=cl=stereo:r=44100:d={total_duration}"])
                 bgm_filter_stmt = f"[{idx_bgm_input}:a]volume=0.0,asetpts=0[bgm_fixed];"
             
@@ -202,19 +176,16 @@ class VideoService:
             *mapped_inputs,
             *audio_inputs,
             "-filter_complex", f"{bgm_mixing_filter} {graphic_filter}",
-            "-map", "[v_final]", 
-            "-map", "[a_final]",
+            "-map", "[v_final]", "-map", "[a_final]",
             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
             "-t", f"{total_duration:.2f}",
             final_output_path
         ]
 
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = process.communicate()
+        process.communicate()
 
         if process.returncode != 0:
-            error_log = stderr.decode('utf-8', errors='ignore')
-            print(f"[FFmpeg 치명적 렌더링 에러]: {error_log}")
-            raise Exception("FFmpeg 미디어 타임라인 빌드 중 결함이 발생했습니다.")
+            raise Exception("FFmpeg 렌더링에 실패했습니다.")
 
-        return f"/static/output_{session_id}.mp4"
+        return f"/static/tasks/{task_id}/output.mp4"
