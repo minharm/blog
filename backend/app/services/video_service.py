@@ -9,6 +9,8 @@ class VideoService:
         self.static_dir = "static"
         self.tasks_base_dir = os.path.join(self.static_dir, "tasks")
         os.makedirs(self.tasks_base_dir, exist_ok=True)
+        # BGM 음원이 담길 정적 폴더 강제 개설
+        os.makedirs(os.path.join(self.static_dir, "bgm"), exist_ok=True)
 
     def _get_duration(self, file_path) -> float:
         """FFprobe 기반 밀리초 단위 정밀 오디오 분석 엔진"""
@@ -123,7 +125,7 @@ class VideoService:
 
         c_size = safe_settings.get("fontSize", 42)
         c_line1 = "0xFFFFFF"
-        c_line2 = "0x00D4FF"  # 💡 주석 교정: 트렌디한 시안(Cyan) 네온 스카이블루 계열 색상 명세
+        c_line2 = "0x00D4FF"  
         c_boxcolor = "0x000000@0.6"
         
         if template == "dark":
@@ -144,7 +146,7 @@ class VideoService:
         st_ending = d_hook + d_body
 
         motion_hook = f"y='if(lt(t,0.3), h-100-((t/0.3)*180), h-280)'"
-        motion_body = f"y='if(lt(t-{st_body},0.3), h-100-(((t-{st_body})/0.3)*180), h-280)'"
+        motion_body = f"if(lt(t-{st_body},0.3), h-100-(((t-{st_body})/0.3)*180), h-280)'"
         motion_ending = f"y='if(lt(t-{st_ending},0.3), h-100-(((t-{st_ending})/0.3)*180), h-280)'"
 
         graphic_filter = (
@@ -155,42 +157,40 @@ class VideoService:
             f"drawtext=textfile='{f_ending_txt}':{motion_ending}:x=(w-tw)/2:fontsize={c_size}:fontcolor={c_line1}:box=1:boxcolor={c_boxcolor}:boxborderw=20:enable='between(t,{st_ending},{total_duration})'[v_final]"
         )
 
-        # 🎯 [치명적 미구현 결함 해결] 지능형 다중 오디오 / 실시간 BGM 믹싱 필터 결합 체인 구축
-        audio_inputs = []
-        bgm_mixing_filter = ""
-        
-        # 사용자가 BGM 활성화(autoBgm)를 켰을 경우 FFmpeg 합성 타겟으로 내부 탑재
-        # 실제 운영 시 static/bgm/ 폴더에 track_01.mp3 등을 넣어두면 연동됩니다. (없을 경우를 대비해 lavfi 가상 BGM 가드 장착)
+        # 🎯 [핵심 버그 완전 격파]: autoBgm 토글 스위치 및 가짜 사인파 소음 박멸 레이어
         use_bgm = safe_settings.get("autoBgm", True)
         bgm_track_id = safe_settings.get("bgmTrack", "track_01")
         bgm_file_path = f"static/bgm/{bgm_track_id}.mp3"
         
-        if not os.path.exists(bgm_file_path):
-            # 실제 BGM mp3 파일이 생성되기 전에는 테스트를 위해 가상의 잔잔한 팝 무드 주파수를 동적 생성해 가드합니다.
-            bgm_input_src = f"-f lavfi -i sine=frequency=120:duration={total_duration}"
-        else:
-            bgm_input_src = f"-stream_loop -1 -i {bgm_file_path}"
+        audio_inputs = []
+        bgm_mixing_filter = ""
 
+        # 1. 나레이션 음성 소스 배치 결정
         if is_voice_none:
-            # 1) 자막만 모드 + BGM 믹싱 연산
-            cmd_bgm_args = bgm_input_src.split()
-            audio_inputs.extend(["-f", "lavfi", "-i", f"anullsrc=cl=stereo:r=44100:d={total_duration}", *cmd_bgm_args])
-            
-            # amix=inputs=2 파이프라인 개설: 침묵(나레이션대체0번) + BGM트랙(1번) 믹싱
-            # volume=0.1 필터 조절을 통해 배경음악 소리가 자막 뒤로 잔잔하게 깔리도록 제어합니다.
-            bgm_mixing_filter = f"[1:a]volume=0.1,asetpts=0[bgm_fixed]; [0:a][bgm_fixed]amix=inputs=2:duration=first[a_final];"
+            audio_inputs.extend(["-f", "lavfi", "-i", f"anullsrc=cl=stereo:r=44100:d={total_duration}"])
+            voice_filter_stmt = f"[0:a]"
+            idx_bgm_input = 1
         else:
-            # 2) 나레이션 있음 + BGM 믹싱 연산
-            cmd_bgm_args = bgm_input_src.split()
-            audio_inputs.extend(["-i", p_hook, "-i", p_body, "-i", p_ending, *cmd_bgm_args])
+            audio_inputs.extend(["-i", p_hook, "-i", p_body, "-i", p_ending])
+            voice_filter_stmt = f"[{idx_v}:a][{idx_v+1}:a][{idx_v+2}:a]concat=n=3:v=0:a=1[a_voice_merged]; [a_voice_merged]"
+            idx_bgm_input = idx_v + 3
+
+        # 2. 토글 스위치(use_bgm) 및 실제 MP3 파일 유무에 따른 연산 분기 조립
+        if use_bgm:
+            if os.path.exists(bgm_file_path):
+                # 실제 BGM 파일이 존재할 때: 무한 루프 인풋으로 장전
+                audio_inputs.extend(["-stream_loop", "-1", "-i", bgm_file_path])
+                bgm_filter_stmt = f"[{idx_bgm_input}:a]volume=0.15,asetpts=0[bgm_fixed];"
+            else:
+                # 🎯 파일이 아직 없을 때: 귀를 찌르는 삐- 소리(sine) 대신 부드러운 가상 무음 처리로 전면 교체
+                audio_inputs.extend(["-f", "lavfi", "-i", f"anullsrc=cl=stereo:r=44100:d={total_duration}"])
+                bgm_filter_stmt = f"[{idx_bgm_input}:a]volume=0.0,asetpts=0[bgm_fixed];"
             
-            # idx_v(대본1) + idx_v+1(대본2) + idx_v+2(대본3) 컨캣 ➡️ 믹싱 마스터 라인 장전
-            idx_bgm = idx_v + 3
-            bgm_mixing_filter = (
-                f"[{idx_v}:a][{idx_v+1}:a][{idx_v+2}:a]concat=n=3:v=0:a=1[a_voice_merged]; "
-                f"[{idx_bgm}:a]volume=0.15,asetpts=0[bgm_fixed]; "
-                f"[a_voice_merged][bgm_fixed]amix=inputs=2:duration=first[a_final];"
-            )
+            # 최종 믹싱 트랙 결합 (amix=inputs=2)
+            bgm_mixing_filter = f"{voice_filter_stmt}identity[a_src]; {bgm_filter_stmt} [a_src][bgm_fixed]amix=inputs=2:duration=first[a_final];"
+        else:
+            # 🎯 사용자가 BGM 토글을 껐을 경우: 어떠한 BGM 레이어도 섞지 않고 오직 순정 목소리만 다이렉트 출격
+            bgm_mixing_filter = f"{voice_filter_stmt}amix=inputs=1[a_final];"
 
         cmd = [
             "ffmpeg", "-y",

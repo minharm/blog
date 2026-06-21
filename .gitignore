@@ -1,9 +1,22 @@
-# 1. 깃허브가 추적 중인 static 산출물들과 파이썬 캐시 폴더를 추적 대상에서만 강제로 도려냅니다.
-git rm -r --cached backend/static
-git rm -r --cached backend/app/services/__pycache__
+# Node dependencies
+node_modules/
+dist/
+.eslintcache
+.package-lock.json
 
-# 2. 청소 내역을 커밋 기록으로 남깁니다.
-git commit -m "chore: 원격 저장소 내 대용량 미디어 산출물 및 pycache 가비지 파일 완전 박멸"
+# Python artifacts
+__pycache__/
+*.pyc
+.venv/
+venv/
 
-# 3. 깃허브 저장소로 밀어 올려 청소를 완료합니다.
-git push origin main
+# Local media generation directories (Strict Block)
+backend/static/tasks/
+backend/static/tmp_img/
+backend/static/speech*.mp3
+backend/static/output*.mp4
+
+# Security Environment Variables (Never upload to GitHub)
+.env
+.env.local
+.env.*
