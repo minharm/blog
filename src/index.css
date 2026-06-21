@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+body {
+  background-color: #020617; /* bg-slate-950 */
+  color: #f8fafc; /* text-slate-100 */
+  margin: 0;
+  font-family: sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
