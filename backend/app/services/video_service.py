@@ -11,7 +11,7 @@ class VideoService:
         os.makedirs(self.tasks_base_dir, exist_ok=True)
 
     def _get_duration(self, file_path) -> float:
-        """FFprobe 기반 밀리초 단위 정밀 오디오 분석 엔진 (예외 방어 완비)"""
+        """FFprobe 기반 밀리초 단위 정밀 오디오 분석 엔진"""
         if not os.path.exists(file_path): return 0.0
         try:
             cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", file_path]
@@ -38,7 +38,6 @@ class VideoService:
     async def generate_shorts_video(self, images: list[str], template: str = "basic", settings: dict = None) -> str:
         safe_settings = settings or {}
 
-        # 🎯 해결책 1: 동시 요청 격리를 위한 세션 ID 발급 및 폴더 생성
         session_id = str(uuid.uuid4())
         task_dir = os.path.join(self.tasks_base_dir, session_id)
         os.makedirs(task_dir, exist_ok=True)
@@ -49,8 +48,6 @@ class VideoService:
         p_body = "static/speech_body.mp3"
         p_ending = "static/speech_ending.mp3"
 
-        # 🎯 [리뷰 결함 1 해결] 자막 전용 모드 브레이크 다운 방어 레이어
-        # 성우가 없거나 파일이 소멸된 상태라면 가상의 정적 타임라인(총 15초)을 강제 가드 분배합니다.
         is_voice_none = not (os.path.exists(p_hook) and os.path.exists(p_body) and os.path.exists(p_ending))
         
         if is_voice_none:
@@ -62,7 +59,6 @@ class VideoService:
             
         total_duration = d_hook + d_body + d_ending
 
-        # 이미지 소스 실시간 수집 및 로컬라이징
         local_images = []
         async with httpx.AsyncClient() as client:
             for idx, img_url in enumerate(images):
@@ -80,7 +76,6 @@ class VideoService:
             subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=0x020617:s=720x1280", "-vframes", "1", fb], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             local_images.append(fb)
 
-        # 타임라인 이미지 균등 분배 트랙 연산
         img_count = len(local_images)
         if img_count == 1:
             arr_hook, arr_body, arr_ending = [local_images[0]], [local_images[0]], [local_images[0]]
@@ -118,7 +113,6 @@ class VideoService:
 
         v_concat += f"concat=n={idx_v}:v=1:a=0[v_base]"
 
-        # 자막 텍스트 임시 가두기 파일링
         f_hook_txt = f"static/tasks/{session_id}/hook.txt"
         f_body_txt = f"static/tasks/{session_id}/body.txt"
         f_ending_txt = f"static/tasks/{session_id}/ending.txt"
@@ -127,19 +121,18 @@ class VideoService:
         with open(os.path.join(task_dir, "body.txt"), "w", encoding="utf-8") as f: f.write(self._wrap_text(safe_settings.get("body_text", "")))
         with open(os.path.join(task_dir, "ending.txt"), "w", encoding="utf-8") as f: f.write(self._wrap_text(safe_settings.get("ending_text", "")))
 
-        # 🎯 [리뷰 결함 4 해결] 추천 디자인 프리셋 선택 메커니즘 활성화 및 맵핑
         c_size = safe_settings.get("fontSize", 42)
         c_line1 = "0xFFFFFF"
-        c_line2 = "0x00D4FF"  # 기본 골드 옐로우
+        c_line2 = "0x00D4FF"  # 💡 주석 교정: 트렌디한 시안(Cyan) 네온 스카이블루 계열 색상 명세
         c_boxcolor = "0x000000@0.6"
         
         if template == "dark":
             c_line1 = "0xCCCCCC"
-            c_line2 = "0x4A4AF7"  # 네온 레드 핑크 변환
+            c_line2 = "0x4A4AF7"  
             c_boxcolor = "0x111111@0.8"
         elif template == "mint":
             c_line1 = "0xFFFFFF"
-            c_line2 = "0x6EF5A3"  # 민트 그린
+            c_line2 = "0x6EF5A3"  
             c_boxcolor = "0x052e16@0.9"
         elif template == "custom":
             c_line1 = safe_settings.get("colorLine1", "#FFFFFF").replace("#", "0x")
@@ -162,25 +155,48 @@ class VideoService:
             f"drawtext=textfile='{f_ending_txt}':{motion_ending}:x=(w-tw)/2:fontsize={c_size}:fontcolor={c_line1}:box=1:boxcolor={c_boxcolor}:boxborderw=20:enable='between(t,{st_ending},{total_duration})'[v_final]"
         )
 
-        # 🎯 [리뷰 결함 5 해결] 사운드 제어: 가상 침묵 트랙 혹은 오디오 인풋 매칭 연산
+        # 🎯 [치명적 미구현 결함 해결] 지능형 다중 오디오 / 실시간 BGM 믹싱 필터 결합 체인 구축
         audio_inputs = []
-        filter_audio_complex = ""
+        bgm_mixing_filter = ""
         
-        if is_voice_none:
-            # 음성 파일이 없을 경우 가상 가드 침묵 오디오 스트림 결합 선언
-            audio_inputs.extend(["-f", "lavfi", "-i", f"anullsrc=cl=stereo:r=44100:d={total_duration}"])
-            filter_audio_complex = f"[0:a]amix=inputs=1[a_final];"
-            audio_index_offset = 0
+        # 사용자가 BGM 활성화(autoBgm)를 켰을 경우 FFmpeg 합성 타겟으로 내부 탑재
+        # 실제 운영 시 static/bgm/ 폴더에 track_01.mp3 등을 넣어두면 연동됩니다. (없을 경우를 대비해 lavfi 가상 BGM 가드 장착)
+        use_bgm = safe_settings.get("autoBgm", True)
+        bgm_track_id = safe_settings.get("bgmTrack", "track_01")
+        bgm_file_path = f"static/bgm/{bgm_track_id}.mp3"
+        
+        if not os.path.exists(bgm_file_path):
+            # 실제 BGM mp3 파일이 생성되기 전에는 테스트를 위해 가상의 잔잔한 팝 무드 주파수를 동적 생성해 가드합니다.
+            bgm_input_src = f"-f lavfi -i sine=frequency=120:duration={total_duration}"
         else:
-            audio_inputs.extend(["-i", p_hook, "-i", p_body, "-i", p_ending])
-            filter_audio_complex = f"[{idx_v}:a][{idx_v+1}:a][{idx_v+2}:a]concat=n=3:v=0:a=1[a_voice_merged]; [a_voice_merged]amix=inputs=1[a_final];"
-            audio_index_offset = 3
+            bgm_input_src = f"-stream_loop -1 -i {bgm_file_path}"
+
+        if is_voice_none:
+            # 1) 자막만 모드 + BGM 믹싱 연산
+            cmd_bgm_args = bgm_input_src.split()
+            audio_inputs.extend(["-f", "lavfi", "-i", f"anullsrc=cl=stereo:r=44100:d={total_duration}", *cmd_bgm_args])
+            
+            # amix=inputs=2 파이프라인 개설: 침묵(나레이션대체0번) + BGM트랙(1번) 믹싱
+            # volume=0.1 필터 조절을 통해 배경음악 소리가 자막 뒤로 잔잔하게 깔리도록 제어합니다.
+            bgm_mixing_filter = f"[1:a]volume=0.1,asetpts=0[bgm_fixed]; [0:a][bgm_fixed]amix=inputs=2:duration=first[a_final];"
+        else:
+            # 2) 나레이션 있음 + BGM 믹싱 연산
+            cmd_bgm_args = bgm_input_src.split()
+            audio_inputs.extend(["-i", p_hook, "-i", p_body, "-i", p_ending, *cmd_bgm_args])
+            
+            # idx_v(대본1) + idx_v+1(대본2) + idx_v+2(대본3) 컨캣 ➡️ 믹싱 마스터 라인 장전
+            idx_bgm = idx_v + 3
+            bgm_mixing_filter = (
+                f"[{idx_v}:a][{idx_v+1}:a][{idx_v+2}:a]concat=n=3:v=0:a=1[a_voice_merged]; "
+                f"[{idx_bgm}:a]volume=0.15,asetpts=0[bgm_fixed]; "
+                f"[a_voice_merged][bgm_fixed]amix=inputs=2:duration=first[a_final];"
+            )
 
         cmd = [
             "ffmpeg", "-y",
             *mapped_inputs,
             *audio_inputs,
-            "-filter_complex", f"{filter_audio_complex} {graphic_filter}",
+            "-filter_complex", f"{bgm_mixing_filter} {graphic_filter}",
             "-map", "[v_final]", 
             "-map", "[a_final]",
             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
@@ -193,7 +209,7 @@ class VideoService:
 
         if process.returncode != 0:
             error_log = stderr.decode('utf-8', errors='ignore')
-            print(f"[FFmpeg 치명적 에러 로그]: {error_log}")
-            raise Exception("FFmpeg 컴파일 파이프라인 연출 공정 도중 에러가 터졌습니다.")
+            print(f"[FFmpeg 치명적 렌더링 에러]: {error_log}")
+            raise Exception("FFmpeg 미디어 타임라인 빌드 중 결함이 발생했습니다.")
 
         return f"/static/output_{session_id}.mp4"

@@ -1,20 +1,9 @@
-node_modules/
-dist/
-.eslintcache
-.package-lock.json
+# 1. 깃허브가 추적 중인 static 산출물들과 파이썬 캐시 폴더를 추적 대상에서만 강제로 도려냅니다.
+git rm -r --cached backend/static
+git rm -r --cached backend/app/services/__pycache__
 
-# 파이썬 크롤러 가비지 완전 방어
-__pycache__/
-*.pyc
-.venv/
-venv/
+# 2. 청소 내역을 커밋 기록으로 남깁니다.
+git commit -m "chore: 원격 저장소 내 대용량 미디어 산출물 및 pycache 가비지 파일 완전 박멸"
 
-# 로컬 임시 다운로드 이미지 및 동적 렌더링 파일 폴더 가두기
-static/tasks/
-static/tmp_img/
-static/speech*.mp3
-static/output*.mp4
-
-# 원격 보안 토큰 차단
-.env
-.env.local
+# 3. 깃허브 저장소로 밀어 올려 청소를 완료합니다.
+git push origin main

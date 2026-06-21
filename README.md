@@ -1,16 +1,26 @@
-# React + Vite
+# 🎬 Blog2Shorts AI - 네이버 블로그 기반 AI 쇼츠 자동 생성 플랫폼
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+본 플랫폼은 사용자가 네이버 블로그 URL을 입력하면 AI 브레인(GPT-4o)이 본문을 정밀 크롤링 및 요약하여, 시청자 이탈을 막는 3단 대본(Hook-Body-Ending)을 창작하고, 타임라인 칼싱크 이미지 매핑 및 통통 튀는 키네틱 자막과 BGM을 결합해 9:16 규격의 프리미엄 쇼츠 동영상(.mp4)을 컴파일하는 자동화 제작 솔루션입니다.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🛠️ 1. 시스템 요구사항 및 필수 설치
+서비스의 미디어 컴파일 파이프라인을 정상 구동하기 위해 아래 외부 프로그램이 컴퓨터 시스템에 반드시 선행 설치 및 환경변수(PATH) 등록이 완료되어야 합니다.
+* **FFmpeg / FFprobe**: 동영상 슬라이드쇼 결합, 자막 오버레이 및 오디오 정밀 길이 계측 시스템의 심장부 프로그램입니다. (터미널에 `ffmpeg -version`을 쳐서 인식이 되어야 합니다.)
+* **Python 3.13+** 및 **Node.js 18+** 환경
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🚀 2. 빠른 실행 방법 (One-Click Starter)
+프로젝트 최상위 폴더(`blog/`)에서 환경에 맞는 런 스크립트를 마우스로 실행하면 백엔드 서버(FastAPI: 8000포트)와 프론트엔드 서버(Vite: 5173포트)가 순차적으로 자동 개설됩니다.
+* **Windows 탐색기 환경**: `start_project.bat` 파일을 마우스로 더블 클릭합니다.
+* **VS Code 파워쉘 터미널 환경**: `./start_project.ps1` 명령어를 실행합니다.
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 🔒 3. 환경 변수 및 OpenAI API 인증 키 세팅
+백엔드 폴더 내부(`backend/`)에 `.env` 파일을 개설하고 본인의 프리미엄 OpenAI 시크릿 토큰 키를 마운트해야 고품질 GPT 대본 생성 및 TTS 오디오 트랙 합성이 발동합니다.
+
+```env
+# backend/.env 파일 양식
+OPENAI_API_KEY=your_actual_openai_api_key_here
