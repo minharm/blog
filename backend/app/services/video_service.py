@@ -50,10 +50,21 @@ class VideoService:
         p_body = "static/speech_body.mp3"
         p_ending = "static/speech_ending.mp3"
 
+       # 🎯 [자막 전용 모드 글자 컷팅 결함 완벽 해결]: 지능형 텍스트 길이 기반 타임라인 자동 계측기
         is_voice_none = not (os.path.exists(p_hook) and os.path.exists(p_body) and os.path.exists(p_ending))
         
         if is_voice_none:
-            d_hook, d_body, d_ending = 4.0, 7.0, 4.0
+            # 프론트엔드가 보내준 실제 텍스트 스트링 문자열 길이 확보
+            txt_hook_raw = safe_settings.get("hook_text", "")
+            txt_body_raw = safe_settings.get("body_text", "")
+            txt_ending_raw = safe_settings.get("ending_text", "")
+            
+            # 한국어 가독 효율 공식 주입: (글자 수 * 0.18초)와 최소 유지 시간(4~6초) 중 최댓값을 동적 선택!
+            # 글자가 길어지면 FFmpeg의 렌더링 프레임 타임라인이 알아서 리드미컬하게 확장됩니다.
+            d_hook = max(4.0, len(txt_hook_raw) * 0.18)
+            d_body = max(6.5, len(txt_body_raw) * 0.18)
+            d_ending = max(4.0, len(txt_ending_raw) * 0.18)
+            print(f"📊 [자막 전용 모드 가동] 글자 수 비례 동적 계측 시간 계산 완료 -> Hook: {d_hook:.1f}초, Body: {d_body:.1f}초, Ending: {d_ending:.1f}초")
         else:
             d_hook = self._get_duration(p_hook) or 4.0
             d_body = self._get_duration(p_body) or 7.0
