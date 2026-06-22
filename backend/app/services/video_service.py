@@ -132,7 +132,6 @@ class VideoService:
         c_channel = safe_settings.get("channelName", "SuperShorts")
         st_body, st_ending = d_hook, d_hook + d_body
 
-        # 🎯 [핵심 교정 완비] 수식의 콤마가 필터 분기문으로 오해받지 않도록 값 전체를 싱글 쿼테이션(')으로 엄격 격리
         motion_hook = "y='if(lt(t,0.3),h-100-((t/0.3)*180),h-280)'"
         motion_body = f"y='if(lt(t-{st_body},0.3),h-100-(((t-{st_body})/0.3)*180),h-280)'"
         motion_ending = f"y='if(lt(t-{st_ending},0.3),h-100-(((t-{st_ending})/0.3)*180),h-280)'"
@@ -192,4 +191,5 @@ class VideoService:
             print(f"❌ [FFmpeg 치명적 에러로그]\n{error_log}")
             raise Exception("FFmpeg 미디어 합성에 실패했습니다.")
 
-        return f"/static/output_{session_id}.mp4"
+        # 🎯 [버그 해결 완료] NameError 유발자였던 session_id 오타를 격리 세션 task_id 경로로 완벽 교정!
+        return f"/static/tasks/{task_id}/output.mp4"

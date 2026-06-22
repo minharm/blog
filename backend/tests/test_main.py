@@ -10,18 +10,16 @@ client = TestClient(app)
 @patch("app.main.NaverCrawler")
 @patch("app.main.openai_client")
 def test_1_analyze_blog_endpoint_contract(mock_openai_client, mock_crawler_class):
-    """1단계: 블로그 크롤링 및 GPT 대본 분할 생성 계약 조건 검증 (100% 가드 패치)"""
+    """1단계: 블로그 크롤링 및 GPT 대본 분할 생성 계약 조건 검증"""
     # NaverCrawler Mocking
     mock_crawler = mock_crawler_class.return_value
     mock_crawler.extract_text = AsyncMock(return_value=("본문 내용 샘플", "테스트 제목", ["http://img1.jpg"]))
 
-    # 🎯 [모킹 결함 교정] await 호출 결과를 온전히 뱉어내도록 MagicMock 응답 객체 조립
     mock_response = MagicMock()
     mock_choice = MagicMock()
     mock_choice.message.content = '{"hook": "테스트 훅", "body": "테스트 바디", "ending": "테스트 엔딩"}'
     mock_response.choices = [mock_choice]
     
-    # 🚀 create가 호출(await)되면 .return_value인 mock_response를 뱉어내게 정밀 세팅
     mock_openai_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
     # API 요청 테스트 실행
