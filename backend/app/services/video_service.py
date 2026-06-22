@@ -3,6 +3,7 @@ import subprocess
 import httpx
 import json
 import uuid
+import re
 
 class VideoService:
     def __init__(self):
@@ -15,11 +16,11 @@ class VideoService:
         if not os.path.exists(file_path): return 0.0
         try:
             cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", file_path]
-            # 🎯 [설계상 문제 4/5 적용] capture_output을 연동하고 계측 에러 발생 시 명확하게 예외 로깅 처리
+            # 🎯 [설계상 문제 4 적용] 대용량 버퍼 교착방지를 위해 동기식 run 및 capture_output 전환
             res = subprocess.run(cmd, capture_output=True, text=True, check=True)
             return float(json.loads(res.stdout)["format"]["duration"])
         except Exception as e:
-            print(f"❌ [FFprobe 에러 계측 실패 - 기본 4초 대체]: {e}")
+            print(f"⚠️ [FFprobe 계측 실패 - 기본 4초 대체]: {e}")
             return 4.0
 
     def _wrap_text(self, text, max_chars=16) -> str:
@@ -35,9 +36,14 @@ class VideoService:
         if current: lines.append(current)
         return "\n".join(lines)
 
+    # 🎯 [2순위 & 6순위 오류 해결] Windows 절대경로 콜론(:) 및 백슬래시 오인을 차단하는 전용 이스케이프 헬퍼
+    def ffmpeg_escape_path(self, path: str) -> str:
+        return path.replace("\\", "/").replace(":", "\\:")
+
     async def generate_shorts_video(self, task_id: str, images: list[str], template: str = "basic", settings: dict = None) -> str:
         safe_settings = settings or {}
-        # 🎯 [치명적 오류 3] FFmpeg 실행 위치 격리를 위해 태스크 디렉토리를 절대경로(abspath)로 강제 변환
+        
+        # 🎯 [1순위 오류 해결] 실행 위치와 상관없이 오동작하지 않도록 절대경로(abspath) 선행 확정
         task_dir = os.path.abspath(os.path.join(self.tasks_base_dir, task_id))
         os.makedirs(task_dir, exist_ok=True)
 
@@ -61,7 +67,7 @@ class VideoService:
         total_duration = d_hook + d_body + d_ending
 
         local_images = []
-        # 🎯 [오류 7] 이미지 서버 다운 지연을 전면 방어하기 위해 커넥션 타임아웃을 20.0초로 상향 연장
+        # 🎯 [오류 7 적용] 네트워크 지연으로 인한 꿀럭임 방지를 위해 타임아웃 20초 확보
         async with httpx.AsyncClient() as client:
             for idx, img_url in enumerate(images):
                 if img_url.startswith("blob:") or not img_url.startswith("http"): continue
@@ -71,8 +77,7 @@ class VideoService:
                         path = os.path.join(task_dir, f"img_{idx}.jpg")
                         with open(path, "wb") as f: f.write(resp.content)
                         local_images.append(path)
-                except Exception as img_err:
-                    print(f"⚠️ [이미지 파싱 예외 발생 - 인덱스 {idx}]: {img_err}")
+                except: pass
 
         if not local_images:
             fb = os.path.join(task_dir, "fb.jpg")
@@ -89,7 +94,7 @@ class VideoService:
             arr_ending = [local_images[-1]]
             arr_body = local_images[1:-1]
 
-        # 🎯 [설계상 문제 1] arr_body가 비어있을 때 발생하는 ZeroDivisionError 수학적 크래시 원천 방쇄
+        # 🎯 [설계상 문제 1 적용] 제로 디비전 방어 벨브 수립
         dur_hook_img = d_hook / max(1, len(arr_hook))
         dur_body_img = d_body / max(1, len(arr_body))
         dur_ending_img = d_ending / max(1, len(arr_ending))
@@ -117,50 +122,50 @@ class VideoService:
 
         v_concat += f"concat=n={idx_v}:v=1:a=0[v_base]"
 
-        # 🎯 [치명적 오류 3 & 오류 6] 자막 파일 경로를 완전한 절대경로화 한 뒤, Windows의 역슬래시와 드라이브 콜론(:) 분석 파괴 차단 완료
-        f_hook_txt = os.path.abspath(os.path.join(task_dir, "hook.txt")).replace("\\", "/").replace(":", "\\:")
-        f_body_txt = os.path.abspath(os.path.join(task_dir, "body.txt")).replace("\\", "/").replace(":", "\\:")
-        f_ending_txt = os.path.abspath(os.path.join(task_dir, "ending.txt")).replace("\\", "/").replace(":", "\\:")
+        # 🎯 [1순위 & 2순위 오류 해결] 파일 경로를 완벽한 절대경로로 치환 후 콜론(:) 이스케이프 가드 전사 처리
+        f_hook_txt = self.ffmpeg_escape_path(os.path.join(task_dir, "hook.txt"))
+        f_body_txt = self.ffmpeg_escape_path(os.path.join(task_dir, "body.txt"))
+        f_ending_txt = self.ffmpeg_escape_path(os.path.join(task_dir, "ending.txt"))
 
         with open(os.path.join(task_dir, "hook.txt"), "w", encoding="utf-8") as f: f.write(self._wrap_text(safe_settings.get("hook_text", "")))
         with open(os.path.join(task_dir, "body.txt"), "w", encoding="utf-8") as f: f.write(self._wrap_text(safe_settings.get("body_text", "")))
         with open(os.path.join(task_dir, "ending.txt"), "w", encoding="utf-8") as f: f.write(self._wrap_text(safe_settings.get("ending_text", "")))
 
-        # 🎯 [설계상 문제 3] 사용자가 프론트단에서 비정상적인 폰트 사이즈(음수, 0) 기입 시의 예외 가드 밸브 설치 (20 ~ 100 범위 고정)
+        # 🎯 [설계상 문제 3 적용] fontSize의 비정상 마이너스 유입 차단 가드
         try:
             raw_size = int(safe_settings.get("fontSize", 42))
         except (ValueError, TypeError):
             raw_size = 42
         c_size = max(20, min(raw_size, 100))
         
-        # 🎯 [치명적 오류 4 & 설계상 문제 2] 0xFFFFFF 등 호환성을 해치던 값을 표준 헥사 스트링 컨테이너 명세로 정렬
-        c_line1, c_line2, c_boxcolor = "#FFFFFF", "#00D4FF", "#000000@0.6"
+        # 🎯 [3순위 오류 & 설계상 문제 2 해결] 구형 및 프리미엄 FFmpeg 엔진 전수가 호환되는 표준 컬러 변환 명세 적용 (샵 제거 후 0x 마운트)
+        c_line1 = safe_settings.get("colorLine1", "#FFFFFF").replace("#", "0x")
+        c_line2 = safe_settings.get("colorLine2", "#00D4FF").replace("#", "0x")
+        c_boxcolor = "0x000000@0.6"
         
         if template == "dark":
-            c_line1, c_line2, c_boxcolor = "#CCCCCC", "#4A4AF7", "#111111@0.8"
+            c_line1, c_line2, c_boxcolor = "0xCCCCCC", "0x4A4AF7", "0x111111@0.8"
         elif template == "mint":
-            c_line1, c_line2, c_boxcolor = "#FFFFFF", "#6EF5A3", "#052e16@0.9"
-        elif template == "custom":
-            c_line1 = safe_settings.get("colorLine1", "#FFFFFF")
-            c_line2 = safe_settings.get("colorLine2", "#FFD400")
+            c_line1, c_line2, c_boxcolor = "0xFFFFFF", "0x6EF5A3", "0x052e16@0.9"
 
-        # 🎯 [오류 5] 채널 워터마크에 특수문자(', :, \, %)가 유입되어 전체 인코딩 구문 문자열이 파괴되던 결함 이스케이프 가드 탑재
+        # 🎯 [4순위 오류 해결] 특수기호 유입 시 문자열 파싱 붕괴를 원천 차단하는 정규식 알파뉴메릭 가운딩
         c_channel = safe_settings.get("channelName", "SuperShorts")
-        safe_channel = c_channel.replace("\\", "\\\\").replace("'", "\\'").replace(":", "\\:")
+        safe_channel = re.sub(r"[^a-zA-Z0-9가-힣 _\-]", "", c_channel)
         
         st_body, st_ending = d_hook, d_hook + d_body
 
-        motion_hook = "y='if(lt(t,0.3),h-100-((t/0.3)*180),h-280)'"
-        motion_body = f"y='if(lt(t-{st_body},0.3),h-100-(((t-{st_body})/0.3)*180),h-280)'"
-        motion_ending = f"y='if(lt(t-{st_ending},0.3),h-100-(((t-{st_ending})/0.3)*180),h-280)'"
+        # 🎯 [5순위 오류 해결] y='if(...)' 내부 인라인 홑따옴표 중첩 버그 소멸을 위해, 구문 할당에서 y=를 배제하고 순수 수식 밸류만 사출
+        motion_hook = "if(lt(t,0.3),h-100-((t/0.3)*180),h-280)"
+        motion_body = f"if(lt(t-{st_body},0.3),h-100-(((t-{st_body})/0.3)*180),h-280)"
+        motion_ending = f"if(lt(t-{st_ending},0.3),h-100-(((t-{st_ending})/0.3)*180),h-280)"
 
-        # 🎯 [치명적 오류 1 & 2 조치] 필터그래프 해석기 크래시를 차단하기 위해 수식 내부의 모든 Whitespace 공백 정밀 숙청
+        # 🎯 [5순위 오류 해결] 안정적인 표준 인코딩 동선인 x -> y -> 옵션 정렬 기법 전사 이식 및 공백 전수 제거
         graphic_filter = (
             f"{v_filters}{v_concat};"
-            f"[v_base]drawtext=text='@{safe_channel}':x=(w-tw)/2:y=80:fontsize=26:fontcolor='white@0.4',"
-            f"drawtext=textfile='{f_hook_txt}':{motion_hook}:x=(w-tw)/2:fontsize={c_size}:fontcolor='{c_line1}':box=1:boxcolor='{c_boxcolor}':boxborderw=20:enable='between(t,0,{st_body})',"
-            f"drawtext=textfile='{f_body_txt}':{motion_body}:x=(w-tw)/2:fontsize={c_size}:fontcolor='{c_line2}':box=1:boxcolor='{c_boxcolor}':boxborderw=20:enable='between(t,{st_body},{st_ending})',"
-            f"drawtext=textfile='{f_ending_txt}':{motion_ending}:x=(w-tw)/2:fontsize={c_size}:fontcolor='{c_line1}':box=1:boxcolor='{c_boxcolor}':boxborderw=20:enable='between(t,{st_ending},{total_duration})'[v_final]"
+            f"[v_base]drawtext=text='@{safe_channel}':x=(w-tw)/2:y=80:fontsize=26:fontcolor='{c_line1}@0.4',"
+            f"drawtext=textfile='{f_hook_txt}':x=(w-tw)/2:y='{motion_hook}':fontsize={c_size}:fontcolor='{c_line1}':box=1:boxcolor='{c_boxcolor}':boxborderw=20:enable='between(t,0,{st_body})',"
+            f"drawtext=textfile='{f_body_txt}':x=(w-tw)/2:y='{motion_body}':fontsize={c_size}:fontcolor='{c_line2}':box=1:boxcolor='{c_boxcolor}':boxborderw=20:enable='between(t,{st_body},{st_ending})',"
+            f"drawtext=textfile='{f_ending_txt}':x=(w-tw)/2:y='{motion_ending}':fontsize={c_size}:fontcolor='{c_line1}':box=1:boxcolor='{c_boxcolor}':boxborderw=20:enable='between(t,{st_ending},{total_duration})'[v_final]"
         )
 
         use_bgm = safe_settings.get("autoBgm", True)
@@ -170,19 +175,21 @@ class VideoService:
         audio_inputs = []
         bgm_mixing_filter = ""
 
+        # 🎯 [6순위 오류 해결] 비디오 입력 갯수(idx_v) 변동에 종속되지 않도록, 오디오 시작 인덱스를 가변 변수로 정밀 격리 추적
+        audio_start_idx = idx_v
+
         if is_voice_none:
             audio_inputs.extend(["-f", "lavfi", "-i", f"anullsrc=cl=stereo:r=44100:d={total_duration}"])
-            voice_filter_stmt = f"[{idx_v}:a]"
-            idx_bgm_input = idx_v + 1
+            voice_filter_stmt = f"[{audio_start_idx}:a]"
+            idx_bgm_input = audio_start_idx + 1
         else:
             audio_inputs.extend(["-i", p_hook, "-i", p_body, "-i", p_ending])
-            voice_filter_stmt = f"[{idx_v}:a][{idx_v+1}:a][{idx_v+2}:a]concat=n=3:v=0:a=1[a_voice_merged];[a_voice_merged]"
-            idx_bgm_input = idx_v + 3
+            voice_filter_stmt = f"[{audio_start_idx}:a][{audio_start_idx+1}:a][{audio_start_idx+2}:a]concat=n=3:v=0:a=1[a_voice_merged];[a_voice_merged]"
+            idx_bgm_input = audio_start_idx + 3
 
         if use_bgm:
             if os.path.exists(bgm_file_path):
                 audio_inputs.extend(["-stream_loop", "-1", "-i", bgm_file_path])
-                # 🎯 [치명적 오류 1] 무효한 명령어였던 asetpts=0 선언문을 정석적인 상대 타임스탬프 스펙인 PTS-STARTPTS 공식으로 정밀 교정
                 bgm_filter_stmt = f"[{idx_bgm_input}:a]volume=0.15,asetpts=PTS-STARTPTS[bgm_fixed];"
             else:
                 audio_inputs.extend(["-f", "lavfi", "-i", f"anullsrc=cl=stereo:r=44100:d={total_duration}"])
@@ -203,11 +210,12 @@ class VideoService:
             final_output_path
         ]
 
-        # 🎯 [설계상 문제 4] Popen 방식의 교착 상태(Deadlock)를 방지하기 위해 정석적인 subprocess.run 동기식 추적 전환 완비
+        # 🎯 [설계상 문제 4 적용] 좀비 프로세스 교착을 막기 위해 run 표준 명세 작동
         res = subprocess.run(cmd, capture_output=True, text=True)
 
+        # 🎯 [7순위 해결] No such filter 장착 여부를 포함하여, 터졌을 때의 stderr 바이너리 원인을 전수 사출하도록 예외 처리 고도화
         if res.returncode != 0:
-            print(f"❌ [FFmpeg 치명적 에러로그]\n{res.stderr}")
-            raise Exception(f"FFmpeg 미디어 합성에 실패했습니다. 원인: {res.stderr[:300]}")
+            print(f"❌ [FFmpeg 치명적 렌더링 에러 디버그로그]\n{res.stderr}")
+            raise Exception(f"FFmpeg 미디어 합성이 거부되었습니다. 원인 스트림: {res.stderr[:400]}")
 
         return f"/static/tasks/{task_id}/output.mp4"
