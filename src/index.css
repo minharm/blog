@@ -1,9 +1,41 @@
+/* Pretendard: 한국어 SaaS 표준 웹폰트 (브라우저에서 로드, 빌드와 무관) */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
 @import "tailwindcss";
 
-body {
-  background-color: #020617; /* bg-slate-950 */
-  color: #f8fafc; /* text-slate-100 */
-  margin: 0;
-  font-family: sans-serif;
-  -webkit-font-smoothing: antialiased;
+:root {
+  --brand: #4f46e5;        /* indigo-600 */
+  --brand-strong: #4338ca; /* indigo-700 */
+  --brand-tint: #eef2ff;   /* indigo-50  */
+  --ink: #0f172a;          /* slate-900  */
+  --muted: #64748b;        /* slate-500  */
+  --line: #e5e7eb;         /* gray-200   */
+  --surface: #ffffff;
+  --canvas: #f7f8fa;
 }
+
+html, body {
+  margin: 0;
+  background-color: var(--canvas);
+  color: var(--ink);
+  font-family: "Pretendard", "Pretendard Variable", -apple-system, BlinkMacSystemFont,
+    system-ui, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 부드러운 등장 모션 (기존 코드가 animate-fade-in을 쓰는데 정의가 없어 추가) */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fadeIn 0.4s ease-out both; }
+
+/* 모션 최소화 선호 사용자 존중 */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in { animation: none; }
+}
+
+/* 깔끔한 스크롤바 */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: #d8dbe0; border-radius: 999px; }
+*::-webkit-scrollbar-thumb:hover { background: #c2c6cd; }

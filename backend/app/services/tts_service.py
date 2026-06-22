@@ -1,30 +1,41 @@
+import inspect
 import os
 from openai import AsyncOpenAI
 
+
 class TTSService:
     def __init__(self):
-        # OpenAI 비동기 클라이언트 바인딩
+        # OPENAI_API_KEY 환경변수를 자동으로 읽어 비동기 클라이언트 생성
         self.client = AsyncOpenAI()
 
     async def generate_speech(self, text: str, voice: str, output_path: str) -> str:
         """
-        [상용 레이스 컨디션 방어 사양]
-        임시 static/speech.mp3 공용 버퍼를 거치지 않고, 
-        요청 세션별 격리 경로(output_path)로 고품질 TTS 오디오 트랙을 다이렉트 스트리밍 저장합니다.
+        텍스트를 음성(mp3)으로 변환해 output_path에 저장.
+
+        ⚠️ 버그 수정:
+        예전 코드는 `audio_content = await response.read()` 였는데,
+        설치된 openai 라이브러리 버전에서는 response.read()가 코루틴이 아니라
+        이미 bytes를 바로 반환해서 "object bytes can't be used in 'await' expression"
+        에러가 났습니다. 아래처럼 반환값이 awaitable일 때만 await 하도록 처리하면
+        라이브러리 버전에 상관없이 안전하게 동작합니다.
         """
-        # 저장될 격리 테스크 폴더 선행 검증 및 강제 생성
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-        # OpenAI 최신 표준 스펙 오디오 엔진 호출
+        # 빈 텍스트면 OpenAI가 에러를 내므로 최소 한 글자 보장
+        safe_text = (text or "").strip() or "음성 내용이 비어 있습니다."
+
         response = await self.client.audio.speech.create(
             model="tts-1",
             voice=voice,
-            input=text
+            input=safe_text,
         )
 
-        # 비비동기 주파수 바이너리 버퍼 로드 후 동시성 가드 다이렉트 파일링
-        audio_content = await response.read()
+        # read()가 bytes(동기)이든 코루틴(비동기)이든 모두 처리
+        data = response.read()
+        if inspect.isawaitable(data):
+            data = await data
+
         with open(output_path, "wb") as f:
-            f.write(audio_content)
+            f.write(data)
 
         return output_path
