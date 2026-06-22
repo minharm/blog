@@ -132,9 +132,10 @@ class VideoService:
         c_channel = safe_settings.get("channelName", "SuperShorts")
         st_body, st_ending = d_hook, d_hook + d_body
 
-        motion_hook = f"y='if(lt(t,0.3), h-100-((t/0.3)*180), h-280)'"
-        motion_body = f"y='if(lt(t-{st_body},0.3), h-100-(((t-{st_body})/0.3)*180), h-280)'"
-        motion_ending = f"y='if(lt(t-{st_ending},0.3), h-100-(((t-{st_ending})/0.3)*180), h-280)'"
+        # 🎯 [핵심 교정 완비] 수식의 콤마가 필터 분기문으로 오해받지 않도록 값 전체를 싱글 쿼테이션(')으로 엄격 격리
+        motion_hook = "y='if(lt(t,0.3),h-100-((t/0.3)*180),h-280)'"
+        motion_body = f"y='if(lt(t-{st_body},0.3),h-100-(((t-{st_body})/0.3)*180),h-280)'"
+        motion_ending = f"y='if(lt(t-{st_ending},0.3),h-100-(((t-{st_ending})/0.3)*180),h-280)'"
 
         graphic_filter = (
             f"{v_filters}{v_concat};"
@@ -170,7 +171,7 @@ class VideoService:
             
             bgm_mixing_filter = f"{voice_filter_stmt}anull[a_src]; {bgm_filter_stmt} [a_src][bgm_fixed]amix=inputs=2:duration=first[a_final];"
         else:
-            bgm_mixing_filter = f"{voice_filter_stmt}amix=inputs=1[a_final];"
+            bgm_mixing_filter = f"{voice_filter_stmt}anull[a_final];"
 
         cmd = [
             "ffmpeg", "-y",
@@ -183,13 +184,12 @@ class VideoService:
             final_output_path
         ]
 
-        # 🎯 [리뷰 결함 해결] 사라진 stderr 디버깅 추적 스트림 라인을 완벽 복구하여 렌더 아웃풋 크래시 역추적 보장
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
 
         if process.returncode != 0:
             error_log = stderr.decode('utf-8', errors='ignore')
-            print(f"❌ [FFmpeg 치명적 렌더링 에러 상세 로그]\n{error_log}")
-            raise Exception(f"FFmpeg 미디어 타임라인 빌드 실패: {error_log[:200]}")
+            print(f"❌ [FFmpeg 치명적 에러로그]\n{error_log}")
+            raise Exception("FFmpeg 미디어 합성에 실패했습니다.")
 
-        return f"/static/tasks/{task_id}/output.mp4"
+        return f"/static/output_{session_id}.mp4"

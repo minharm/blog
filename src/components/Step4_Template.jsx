@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { useProjectStore } from '../store/useProjectStore';
 
 export default function Step4_Template() {
-  const [activeTab, setActiveTab] = useState('recommended'); // 'recommended' | 'my_template'
+  const [activeTab, setActiveTab] = useState('recommended'); 
   const { projectData, setSelectedTemplate, fxSettings, toggleFxSetting, setBgmTrack, customTemplate, updateCustomTemplate, handleFinalVideoGeneration, setCurrentStep } = useProjectStore();
 
   return (
     <div className="animate-fade-in grid grid-cols-1 lg:grid-cols-12 gap-8">
       
-      {/* 🛠️ 좌측 섹션: 템플릿 탭 스위처 및 사운드 부가효과 콘솔 */}
+      {/* 🛠️ 좌측 섹션 */}
       <div className="lg:col-span-8 flex flex-col gap-6">
         <div className="flex justify-between items-center">
           <button onClick={() => setCurrentStep(3)} className="text-sm text-slate-500 hover:text-slate-300 font-bold">← 이전으로</button>
@@ -16,7 +16,6 @@ export default function Step4_Template() {
         </div>
         <h3 className="text-2xl font-black text-white">영상 스타일 및 효과 장착</h3>
 
-        {/* 기획서 화면 복제: 탭 메뉴 스위처 */}
         <div className="flex border-b border-slate-800 text-sm font-bold">
           <button onClick={() => setActiveTab('recommended')} className={`px-6 py-2.5 transition-all ${activeTab === 'recommended' ? 'text-blue-500 border-b-2 border-b-blue-500' : 'text-slate-500'}`}>추천 템플릿</button>
           <button onClick={() => setActiveTab('my_template')} className={`px-6 py-2.5 transition-all ${activeTab === 'my_template' ? 'text-blue-500 border-b-2 border-b-blue-500' : 'text-slate-500'}`}>내 템플릿</button>
@@ -41,7 +40,6 @@ export default function Step4_Template() {
           </div>
         )}
 
-        {/* 🔊 기획서 세 번째 이미지 사양: 자동 효과음 및 BGM 직접 고르기 */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col gap-4 shadow-xl">
           <h4 className="text-sm font-black text-slate-300 border-b border-slate-800 pb-2">🎵 사운드 시스템 및 부가 연출 제어</h4>
           
@@ -64,19 +62,19 @@ export default function Step4_Template() {
           <div className="flex flex-col gap-2 bg-slate-950 p-3.5 rounded-xl border border-slate-800/60">
             <span className="text-xs font-bold text-white block">BGM 직접 고르기</span>
             <select value={fxSettings.bgmTrack} onChange={(e) => setBgmTrack(e.target.value)} className="w-full bg-slate-900 border border-slate-800 text-xs text-slate-300 p-2 rounded-lg focus:outline-none">
-              <option value="track_01">밀양 숨겨진 숙소 추천 톤 (감성 어쿠스틱)</option>
-              <option value="track_02">마살 스피커 테크 무드 (신비로운 앰비언트)</option>
-              <option value="track_03">호불호 없는 오사카 츠케멘 (비트감 넘치는 힙합)</option>
+              <option value="track_01">밝고 신나는 비트 트랙 (SaaS 기본형)</option>
+              <option value="track_02">잔잔한 브이로그 무드 (안정형)</option>
+              <option value="track_03">리뷰 긴박한 일렉트로닉 (바이럴형)</option>
             </select>
           </div>
         </div>
       </div>
 
-      {/* 🎨 우측 섹션: 기획서 두 번째 이미지 사양 (내 전용 템플릿 마스터 성형 컨트롤러) */}
+      {/* 🎨 우측 섹션: 내 전용 템플릿 커스텀 콘솔 */}
       <div className="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-2xl flex flex-col gap-5">
         <div>
           <span className="text-[10px] font-black tracking-widest text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded border border-blue-500/20 uppercase">My Dedicated Template</span>
-          <h4 className="text-base font-black text-white mt-2">내 전용 템플릿 커스텀</h4>
+          <h4 className="text-base font-black text-white mt-2">내 템플릿 제어</h4>
         </div>
 
         <div className="flex flex-col gap-3.5 text-xs bg-slate-950 p-4 rounded-xl border border-slate-800">
@@ -116,7 +114,15 @@ export default function Step4_Template() {
           </div>
         </div>
 
-        <button onClick={handleFinalVideoGeneration} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black py-4 rounded-xl text-center text-sm shadow-xl tracking-wide transition-all mt-auto">🎬 모션 자막 필터 적용 영상 합성 시작</button>
+        {/* 🎯 [요구사항 반영] 하단 제어부 가시 동선에 맞춰 직관적인 [이전 단계로] 연동 배치 */}
+        <div className="flex gap-3 mt-auto w-full">
+          <button onClick={() => setCurrentStep(3)} className="w-1/3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-4 rounded-xl text-center text-sm transition-all">
+            이전으로
+          </button>
+          <button onClick={handleFinalVideoGeneration} className="w-2/3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 text-white font-black py-4 rounded-xl text-center text-sm shadow-xl tracking-wide transition-all">
+            🎬 영상 합성 시작
+          </button>
+        </div>
       </div>
 
     </div>
