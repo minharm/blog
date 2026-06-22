@@ -1,7 +1,8 @@
 fastapi
 uvicorn
-beautifulsoup4
-httpx
 pydantic
 openai
 python-dotenv
+httpx
+beautifulsoup4
+pytest

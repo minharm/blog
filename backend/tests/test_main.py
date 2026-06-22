@@ -8,27 +8,28 @@ from app.main import app
 client = TestClient(app)
 
 @patch("app.main.NaverCrawler")
-@patch("app.main.openai_client")  # 🎯 [버그 교정] 하위 속성이 아닌 최상위 오브젝트를 다이렉트로 패치
+@patch("app.main.openai_client")
 def test_1_analyze_blog_endpoint_contract(mock_openai_client, mock_crawler_class):
-    """1단계: 블로그 크롤링 및 GPT 대본 분할 생성 계약 조건 검증"""
+    """1단계: 블로그 크롤링 및 GPT 대본 분할 생성 계약 조건 검증 (100% 가드 패치)"""
     # NaverCrawler Mocking
     mock_crawler = mock_crawler_class.return_value
     mock_crawler.extract_text = AsyncMock(return_value=("본문 내용 샘플", "테스트 제목", ["http://img1.jpg"]))
 
-    # 🎯 OpenAI 하이브리드 중첩 모크 동적 빌드 (AttributeError 원천 차단)
-    mock_chat_completion = AsyncMock()
-    mock_chat_completion.choices = [MagicMock()]
-    mock_chat_completion.choices[0].message.content = '{"hook": "테스트 훅", "body": "테스트 바디", "ending": "테스트 엔딩"}'
+    # 🎯 [모킹 결함 교정] await 호출 결과를 온전히 뱉어내도록 MagicMock 응답 객체 조립
+    mock_response = MagicMock()
+    mock_choice = MagicMock()
+    mock_choice.message.content = '{"hook": "테스트 훅", "body": "테스트 바디", "ending": "테스트 엔딩"}'
+    mock_response.choices = [mock_choice]
     
-    # 족보 연결: 클라이언트 -> chat -> completions -> create 매핑 성공
-    mock_openai_client.chat.completions.create = mock_chat_completion
+    # 🚀 create가 호출(await)되면 .return_value인 mock_response를 뱉어내게 정밀 세팅
+    mock_openai_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
     # API 요청 테스트 실행
     response = client.post("/api/analyze", json={"url": "https://blog.naver.com/test/123"})
     
     assert response.status_code == 200
     data = response.json()
-    assert "task_id" in data, "🚨 동시성 격리를 위한 task_id 발급 레이어가 누락되었습니다!"
+    assert "task_id" in data
     assert data["script"]["hook"] == "테스트 훅"
     assert len(data["scenes"]) == 3
 
@@ -39,7 +40,7 @@ def test_2_generate_tts_endpoint_contract(mock_tts_class):
     mock_tts = mock_tts_class.return_value
     mock_tts.generate_speech = AsyncMock(return_value="static/tasks/test-uuid/speech_hook.mp3")
 
-    with patch("subprocess.run") as mock_subprocess:
+    with patch("subprocess.run"):
         response = client.post("/api/tts", json={
             "task_id": "test-uuid-1234",
             "hook": "도입부",
