@@ -38,22 +38,22 @@ function App() {
       <aside className="w-64 bg-white border-r border-gray-200 flex flex-col p-5 shrink-0">
         <div className="flex items-center gap-2.5 mb-9 px-1">
           <span className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-black text-sm">S</span>
-          <span className="font-black tracking-tight text-lg text-slate-900">SuperShorts</span>
+          <span className="font-black tracking-tight text-xl text-slate-900">SuperShorts</span>
         </div>
 
-        <p className="text-[11px] font-bold text-slate-400 px-2 mb-3 tracking-wide">제작 단계</p>
+        <p className="text-sm font-bold text-slate-400 px-2 mb-3 tracking-wide">제작 단계</p>
         <nav className="flex flex-col gap-1.5">
           {STEPS.map((st) => {
             const active = currentStep === st.id;
             const done = currentStep > st.id;
             return (
               <div key={st.id}
-                className={`flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-all ${
+                className={`flex items-center gap-3 px-3 py-3.5 rounded-xl text-lg font-bold transition-all ${
                   active ? 'bg-indigo-50 text-indigo-700'
                   : done ? 'text-slate-700'
                   : 'text-slate-400'
                 }`}>
-                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${
+                <span className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
                   active ? 'bg-indigo-600 text-white'
                   : done ? 'bg-indigo-100 text-indigo-600'
                   : 'bg-slate-100 text-slate-400'

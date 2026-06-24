@@ -29,7 +29,7 @@ export const TEMPLATES = [
 
 const INITIAL_PROJECT = {
   title: '', script: { hook: '', body: '', ending: '' }, images: [], scenes: [],
-  selectedVoice: 'alloy', selectedTemplate: 'basic', audioUrl: '', videoUrl: ''
+  selectedVoice: 'coral', selectedTemplate: 'basic', audioUrl: '', videoUrl: ''
 };
 
 export const useProjectStore = create((set, get) => ({

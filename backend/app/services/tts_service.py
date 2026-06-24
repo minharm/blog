@@ -2,40 +2,42 @@ import inspect
 import os
 from openai import AsyncOpenAI
 
+# 유튜브 쇼츠 느낌의 밝고 또렷한 톤 + 정확한 한국어 발음 지시 (gpt-4o-mini-tts 전용)
+BRIGHT_INSTRUCTIONS = (
+    "한국어 유튜브 쇼츠 내레이터처럼 밝고 친근하게, 적당한 에너지로 또박또박 읽어줘. "
+    "발음은 정확하고 또렷하게, 끝맺음은 자연스럽게. 너무 빠르거나 단조롭지 않게, "
+    "정보를 전달하듯 신뢰감 있게 말해줘."
+)
+
 
 class TTSService:
     def __init__(self):
-        # OPENAI_API_KEY 환경변수를 자동으로 읽어 비동기 클라이언트 생성
         self.client = AsyncOpenAI()
 
-    async def generate_speech(self, text: str, voice: str, output_path: str) -> str:
+    async def generate_speech(self, text: str, voice: str, output_path: str, instructions: str = None) -> str:
         """
-        텍스트를 음성(mp3)으로 변환해 output_path에 저장.
-
-        ⚠️ 버그 수정:
-        예전 코드는 `audio_content = await response.read()` 였는데,
-        설치된 openai 라이브러리 버전에서는 response.read()가 코루틴이 아니라
-        이미 bytes를 바로 반환해서 "object bytes can't be used in 'await' expression"
-        에러가 났습니다. 아래처럼 반환값이 awaitable일 때만 await 하도록 처리하면
-        라이브러리 버전에 상관없이 안전하게 동작합니다.
+        gpt-4o-mini-tts 로 음성 생성 (tts-1 대비 발음/표현력이 크게 향상).
+        - instructions 로 '밝고 또렷한 유튜버 톤' 지정
+        - 실패 시 tts-1-hd 로 자동 폴백
         """
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-        # 빈 텍스트면 OpenAI가 에러를 내므로 최소 한 글자 보장
         safe_text = (text or "").strip() or "음성 내용이 비어 있습니다."
 
-        response = await self.client.audio.speech.create(
-            model="tts-1",
-            voice=voice,
-            input=safe_text,
-        )
+        async def _create(model, with_instructions):
+            kwargs = dict(model=model, voice=voice, input=safe_text, response_format="mp3")
+            if with_instructions:
+                kwargs["instructions"] = instructions or BRIGHT_INSTRUCTIONS
+            return await self.client.audio.speech.create(**kwargs)
 
-        # read()가 bytes(동기)이든 코루틴(비동기)이든 모두 처리
+        try:
+            response = await _create("gpt-4o-mini-tts", True)
+        except Exception as e:
+            print(f"⚠️ gpt-4o-mini-tts 실패({e}) → tts-1-hd 로 폴백")
+            response = await _create("tts-1-hd", False)
+
         data = response.read()
         if inspect.isawaitable(data):
             data = await data
-
         with open(output_path, "wb") as f:
             f.write(data)
-
         return output_path
